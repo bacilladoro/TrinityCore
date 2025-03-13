@@ -39,15 +39,15 @@ namespace Movement
     class Spline;
 }
 
-class TC_GAME_API AreaTrigger : public WorldObject, public GridObject<AreaTrigger>, public MapObject
+class TC_GAME_API AreaTrigger final : public WorldObject, public GridObject<AreaTrigger>, public MapObject
 {
     public:
         AreaTrigger();
         ~AreaTrigger();
 
     protected:
-        void BuildValuesCreate(ByteBuffer* data, Player const* target) const override;
-        void BuildValuesUpdate(ByteBuffer* data, Player const* target) const override;
+        void BuildValuesCreate(ByteBuffer* data, UF::UpdateFieldFlag flags, Player const* target) const override;
+        void BuildValuesUpdate(ByteBuffer* data, UF::UpdateFieldFlag flags, Player const* target) const override;
         void ClearUpdateMask(bool remove) override;
 
     public:
@@ -73,7 +73,10 @@ class TC_GAME_API AreaTrigger : public WorldObject, public GridObject<AreaTrigge
 
         AreaTriggerAI* AI() { return _ai.get(); }
 
-        bool IsServerSide() const { return _areaTriggerTemplate->Id.IsServerSide; }
+        bool IsCustom() const { return _areaTriggerTemplate->Id.IsCustom; }
+        bool IsServerSide() const { return _areaTriggerTemplate->Flags.HasFlag(AreaTriggerFlag::IsServerSide); }
+        bool IsStaticSpawn() const { return _spawnId != 0; }
+        bool HasActionSetFlag(AreaTriggerActionSetFlag flag) const { return _areaTriggerTemplate->ActionSetFlags.HasFlag(flag); }
 
         bool IsNeverVisibleFor(WorldObject const* seer, bool allowServersideObjects = false) const override;
 
@@ -82,13 +85,13 @@ class TC_GAME_API AreaTrigger : public WorldObject, public GridObject<AreaTrigge
         float GetStationaryZ() const override { return _stationaryPosition.GetPositionZ(); }
         float GetStationaryO() const override { return _stationaryPosition.GetOrientation(); }
         void RelocateStationaryPosition(Position const& pos) { _stationaryPosition.Relocate(pos); }
+        void PlaySpellVisual(uint32 spellVisualId) const;
 
     private:
-        bool Create(uint32 areaTriggerCreatePropertiesId, Unit* caster, Unit* target, SpellInfo const* spellInfo, Position const& pos, int32 duration, SpellCastVisual spellVisual, Spell* spell, AuraEffect const* aurEff);
-        bool CreateServer(Map* map, AreaTriggerTemplate const* areaTriggerTemplate, AreaTriggerSpawn const& position);
+        bool Create(AreaTriggerCreatePropertiesId areaTriggerCreatePropertiesId, Map* map, Position const& pos, int32 duration, AreaTriggerSpawn const* spawnData = nullptr, Unit* caster = nullptr, Unit* target = nullptr, SpellCastVisual spellVisual = { 0, 0 }, SpellInfo const* spellInfo = nullptr, Spell* spell = nullptr, AuraEffect const* aurEff = nullptr);
 
     public:
-        static AreaTrigger* CreateAreaTrigger(uint32 areaTriggerCreatePropertiesId, Unit* caster, Unit* target, SpellInfo const* spellInfo, Position const& pos, int32 duration, SpellCastVisual spellVisual, Spell* spell = nullptr, AuraEffect const* aurEff = nullptr);
+        static AreaTrigger* CreateAreaTrigger(AreaTriggerCreatePropertiesId areaTriggerCreatePropertiesId, Position const& pos, int32 duration, Unit* caster, Unit* target, SpellCastVisual spellVisual = { 0, 0 }, SpellInfo const* spellInfo = nullptr, Spell* spell = nullptr, AuraEffect const* aurEff = nullptr);
         static ObjectGuid CreateNewMovementForceId(Map* map, uint32 areaTriggerId);
         bool LoadFromDB(ObjectGuid::LowType spawnId, Map* map, bool addToMap, bool allowDuplicate);
 
@@ -149,21 +152,21 @@ class TC_GAME_API AreaTrigger : public WorldObject, public GridObject<AreaTrigge
         float GetMaxSearchRadius() const;
         Position const& GetRollPitchYaw() const { return _rollPitchYaw; }
         Position const& GetTargetRollPitchYaw() const { return _targetRollPitchYaw; }
-        void InitSplineOffsets(std::vector<Position> const& offsets, uint32 timeToTarget);
-        void InitSplines(std::vector<G3D::Vector3> splinePoints, uint32 timeToTarget);
+        void InitSplineOffsets(std::vector<Position> const& offsets, Optional<float> overrideSpeed = {});
+        void InitSplines(std::vector<G3D::Vector3> const& splinePoints, Optional<float> overrideSpeed = {});
         bool HasSplines() const;
-        ::Movement::Spline<int32> const& GetSpline() const { return *_spline; }
+        ::Movement::Spline<int32> const& GetSpline() const { return *std::get<std::unique_ptr<::Movement::Spline<int32>>>(_movement); }
         uint32 GetElapsedTimeForMovement() const { return GetTimeSinceCreated(); } /// @todo: research the right value, in sniffs both timers are nearly identical
 
-        void InitOrbit(AreaTriggerOrbitInfo const& orbit, uint32 timeToTarget);
+        void InitOrbit(AreaTriggerOrbitInfo const& orbit, Optional<float> overrideSpeed = {});
         bool HasOrbit() const;
-        Optional<AreaTriggerOrbitInfo> const& GetOrbit() const { return _orbitInfo; }
+        AreaTriggerOrbitInfo const& GetOrbit() const { return *std::get<std::unique_ptr<AreaTriggerOrbitInfo>>(_movement); }
 
         bool HasOverridePosition() const;
 
         void UpdateShape();
 
-        UF::UpdateField<UF::AreaTriggerData, 0, TYPEID_AREATRIGGER> m_areaTriggerData;
+        UF::UpdateField<UF::AreaTriggerData, int32(WowCS::EntityFragment::CGObject), TYPEID_AREATRIGGER> m_areaTriggerData;
 
     protected:
         void _UpdateDuration(int32 newDuration);
@@ -188,7 +191,6 @@ class TC_GAME_API AreaTrigger : public WorldObject, public GridObject<AreaTrigge
         void SearchUnitInCylinder(std::vector<Unit*>& targetList);
         void SearchUnitInDisk(std::vector<Unit*>& targetList);
         void SearchUnitInBoundedPlane(std::vector<Unit*>& targetList);
-        bool CheckIsInPolygon2D(Position const* pos) const;
         void HandleUnitEnterExit(std::vector<Unit*> const& targetList);
 
         void DoActions(Unit* unit);
@@ -221,13 +223,11 @@ class TC_GAME_API AreaTrigger : public WorldObject, public GridObject<AreaTrigge
         Position _rollPitchYaw;
         Position _targetRollPitchYaw;
         std::vector<Position> _polygonVertices;
-        std::unique_ptr<::Movement::Spline<int32>> _spline;
+        std::variant<std::monostate, std::unique_ptr<::Movement::Spline<int32>>, std::unique_ptr<AreaTriggerOrbitInfo>> _movement;
 
         bool _reachedDestination;
         int32 _lastSplineIndex;
         uint32 _movementTime;
-
-        Optional<AreaTriggerOrbitInfo> _orbitInfo;
 
         AreaTriggerCreateProperties const* _areaTriggerCreateProperties;
         AreaTriggerTemplate const* _areaTriggerTemplate;

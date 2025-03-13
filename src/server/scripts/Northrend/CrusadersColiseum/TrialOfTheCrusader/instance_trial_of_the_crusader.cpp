@@ -30,11 +30,11 @@
 
 BossBoundaryData const boundaries =
 {
-    { DATA_NORTHREND_BEASTS,  new CircleBoundary(Position(563.26f, 139.6f), 75.0)        },
-    { DATA_JARAXXUS,          new CircleBoundary(Position(563.26f, 139.6f), 75.0)        },
-    { DATA_FACTION_CRUSADERS, new CircleBoundary(Position(563.26f, 139.6f), 75.0)        },
-    { DATA_TWIN_VALKIRIES,    new CircleBoundary(Position(563.26f, 139.6f), 75.0)        },
-    { DATA_ANUBARAK,          new EllipseBoundary(Position(746.0f, 135.0f), 100.0, 75.0) }
+    { DATA_NORTHREND_BEASTS,  new CircleBoundary(Position(563.26f, 139.6f), 75.0f)         },
+    { DATA_JARAXXUS,          new CircleBoundary(Position(563.26f, 139.6f), 75.0f)         },
+    { DATA_FACTION_CRUSADERS, new CircleBoundary(Position(563.26f, 139.6f), 75.0f)         },
+    { DATA_TWIN_VALKIRIES,    new CircleBoundary(Position(563.26f, 139.6f), 75.0f)         },
+    { DATA_ANUBARAK,          new EllipseBoundary(Position(746.0f, 135.0f), 100.0f, 75.0f) }
 };
 
 ObjectData const creatureData[] =
@@ -83,13 +83,13 @@ ObjectData const gameObjectData[] =
 
 DoorData const doorData[] =
 {
-    { GO_EAST_PORTCULLIS, DATA_NORTHREND_BEASTS,  DOOR_TYPE_ROOM },
-    { GO_EAST_PORTCULLIS, DATA_JARAXXUS,          DOOR_TYPE_ROOM },
-    { GO_EAST_PORTCULLIS, DATA_FACTION_CRUSADERS, DOOR_TYPE_ROOM },
-    { GO_EAST_PORTCULLIS, DATA_TWIN_VALKIRIES,    DOOR_TYPE_ROOM },
-    { GO_EAST_PORTCULLIS, DATA_LICH_KING,         DOOR_TYPE_ROOM },
-    { GO_WEB_DOOR,        DATA_ANUBARAK,          DOOR_TYPE_ROOM },
-    { 0,                  0,                      DOOR_TYPE_ROOM } // END
+    { GO_EAST_PORTCULLIS, DATA_NORTHREND_BEASTS,  EncounterDoorBehavior::OpenWhenNotInProgress },
+    { GO_EAST_PORTCULLIS, DATA_JARAXXUS,          EncounterDoorBehavior::OpenWhenNotInProgress },
+    { GO_EAST_PORTCULLIS, DATA_FACTION_CRUSADERS, EncounterDoorBehavior::OpenWhenNotInProgress },
+    { GO_EAST_PORTCULLIS, DATA_TWIN_VALKIRIES,    EncounterDoorBehavior::OpenWhenNotInProgress },
+    { GO_EAST_PORTCULLIS, DATA_LICH_KING,         EncounterDoorBehavior::OpenWhenNotInProgress },
+    { GO_WEB_DOOR,        DATA_ANUBARAK,          EncounterDoorBehavior::OpenWhenNotInProgress },
+    { 0,                  0,                      EncounterDoorBehavior::OpenWhenNotInProgress } // END
 };
 
 DungeonEncounterData const encounters[] =
@@ -119,7 +119,6 @@ class instance_trial_of_the_crusader : public InstanceMapScript
                 EventStage = 0;
                 NorthrendBeasts = NOT_STARTED;
                 NorthrendBeastsCount = 4;
-                Team = TEAM_OTHER;
                 EventTimer = 1000;
                 NotOneButTwoJormungarsTimer = 0;
                 ResilienceWillFixItTimer = 0;
@@ -133,9 +132,6 @@ class instance_trial_of_the_crusader : public InstanceMapScript
 
             void OnPlayerEnter(Player* player) override
             {
-                if (Team == TEAM_OTHER)
-                    Team = player->GetTeam();
-
                 if (NorthrendBeasts == GORMOK_IN_PROGRESS)
                     player->CreateVehicleKit(PLAYER_VEHICLE_ID, 0);
             }
@@ -524,7 +520,6 @@ class instance_trial_of_the_crusader : public InstanceMapScript
                 uint32 EventStage;
                 uint32 EventTimer;
                 uint32 NorthrendBeasts;
-                uint32 Team;
                 bool CrusadersSpecialState;
                 GuidVector snoboldGUIDS;
 

@@ -158,15 +158,15 @@ class OPvPCapturePointNA : public OPvPCapturePoint
         int32 HandleOpenGo(Player* player, GameObject* go) override;
 
         uint32 GetAliveGuardsCount() const;
-        uint32 GetControllingFaction() const;
-        void FactionTakeOver(uint32 team); // called when a faction takes control
+        Team GetControllingFaction() const;
+        void FactionTakeOver(Team team); // called when a faction takes control
         void UpdateWyvernRoostWorldState(uint32 roost);
 
         void SetControlZoneGUID(ObjectGuid guid) { _controlZoneGUID = guid; }
     private:
         bool m_capturable;
         uint32 m_GuardsAlive;
-        uint32 m_ControllingFaction;
+        Team m_ControllingFaction;
         uint32 m_WyvernStateNorth;
         uint32 m_WyvernStateSouth;
         uint32 m_WyvernStateEast;
@@ -190,9 +190,9 @@ class OutdoorPvPNA : public OutdoorPvP
         void SendRemoveWorldStates(Player* player) override;
         void HandleKillImpl(Player* player, Unit* killed) override;
         void SendMapWorldStates(int32 neutral, int32 progressHorde, int32 progressAlliance, int32 capturedHorde, int32 captureAlliance);
-        OPvPCapturePointNA* GetCapturePoint() const { return m_obj; }
+        OPvPCapturePointNA* GetCapturePoint() const { return m_obj.get(); }
     private:
-        OPvPCapturePointNA* m_obj;
+        std::unique_ptr<OPvPCapturePointNA> m_obj;
 };
 
 #endif

@@ -66,11 +66,11 @@ namespace WorldPackets
 
             void Initialize(Player const* inviter, int32 proposedRoles, bool canAccept);
 
-            bool MightCRZYou = false;
-            bool MustBeBNetFriend = false;
+            bool ShouldSquelch = false;
             bool AllowMultipleRoles = false;
             bool QuestSessionActive = false;
-            uint16 Unk1 = 0;
+            bool IsCrossFaction = false;
+            uint16 InviterCfgRealmID = 0;
 
             bool CanAccept = false;
 
@@ -82,6 +82,7 @@ namespace WorldPackets
 
             // Realm
             bool IsXRealm = false;
+            bool IsXNativeRealm = false;
 
             // Lfg
             uint8 ProposedRoles = 0;
@@ -126,9 +127,11 @@ namespace WorldPackets
         class GroupUninvite final : public ServerPacket
         {
         public:
-            GroupUninvite() : ServerPacket(SMSG_GROUP_UNINVITE, 0) { }
+            GroupUninvite() : ServerPacket(SMSG_GROUP_UNINVITE, 1) { }
 
-            WorldPacket const* Write() override { return &_worldPacket; }
+            WorldPacket const* Write() override;
+
+            uint8 Reason = 0;
         };
 
         class RequestPartyMemberStats final : public ClientPacket
@@ -144,7 +147,7 @@ namespace WorldPackets
 
         struct PartyMemberPhase
         {
-            uint16 Flags = 0u;
+            uint32 Flags = 0u;
             uint16 Id = 0u;
         };
 
@@ -177,9 +180,9 @@ namespace WorldPackets
 
         struct CTROptions
         {
-            uint32 ContentTuningConditionMask = 0;
-            int32 Unused901 = 0;
-            uint32 ExpansionLevelMask = 0;
+            uint32 ConditionalFlags = 0;
+            int8 FactionGroup = 0;
+            uint32 ChromieTimeExpansionMask = 0;
         };
 
         struct PartyMemberStats
@@ -561,6 +564,8 @@ namespace WorldPackets
             int32 MyIndex = 0;
             int32 SequenceNum = 0;
 
+            RestrictPingsTo PingRestriction = RestrictPingsTo::None;
+
             std::vector<PartyPlayerInfo> PlayerList;
 
             Optional<PartyLFGInfo> LfgInfos;
@@ -674,7 +679,7 @@ namespace WorldPackets
             void Read() override;
 
             Optional<uint8> PartyIndex;
-            bool RestrictPingsToAssistants = false;
+            RestrictPingsTo RestrictTo = RestrictPingsTo::None;
         };
 
         class SendPingUnit final : public ClientPacket
@@ -688,6 +693,9 @@ namespace WorldPackets
             ObjectGuid TargetGUID;
             PingSubjectType Type = PingSubjectType::Max;
             uint32 PinFrameID = 0;
+            Duration<Milliseconds, int32> PingDuration;
+            Optional<uint32> CreatureID;
+            Optional<uint32> SpellOverrideNameID;
         };
 
         class ReceivePingUnit final : public ServerPacket
@@ -701,6 +709,9 @@ namespace WorldPackets
             ObjectGuid TargetGUID;
             PingSubjectType Type = PingSubjectType::Max;
             uint32 PinFrameID = 0;
+            Duration<Milliseconds, int32> PingDuration;
+            Optional<uint32> CreatureID;
+            Optional<uint32> SpellOverrideNameID;
         };
 
         class SendPingWorldPoint final : public ClientPacket
@@ -715,6 +726,8 @@ namespace WorldPackets
             TaggedPosition<Position::XYZ> Point;
             PingSubjectType Type = PingSubjectType::Max;
             uint32 PinFrameID = 0;
+            ObjectGuid Transport;
+            Duration<Milliseconds, int32> PingDuration;
         };
 
         class ReceivePingWorldPoint final : public ServerPacket
@@ -729,6 +742,8 @@ namespace WorldPackets
             TaggedPosition<Position::XYZ> Point;
             PingSubjectType Type = PingSubjectType::Max;
             uint32 PinFrameID = 0;
+            Duration<Milliseconds, int32> PingDuration;
+            ObjectGuid Transport;
         };
 
         class CancelPingPin final : public ServerPacket

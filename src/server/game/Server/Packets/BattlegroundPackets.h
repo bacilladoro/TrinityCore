@@ -43,7 +43,10 @@ namespace WorldPackets
             int32 CurrentArenaSeason = 0;
             int32 PvpSeasonID = 0;
             int32 ConquestWeeklyProgressCurrencyID = 0;
+            int32 Unknown1027_1 = 0;
             bool WeeklyRewardChestsEnabled = false;
+            bool CurrentArenaSeasonUsesTeams = false;
+            bool PreviousArenaSeasonUsesTeams = false;
         };
 
         class AreaSpiritHealerQuery final : public ClientPacket
@@ -126,7 +129,7 @@ namespace WorldPackets
             {
                 ObjectGuid PlayerGUID;
                 uint32 Kills = 0;
-                uint8 Faction = 0;
+                int32 Faction = 0;
                 bool IsInWorld = false;
                 Optional<HonorData> Honor;
                 uint32 DamageDone = 0;
@@ -139,8 +142,8 @@ namespace WorldPackets
                 std::vector<PVPMatchPlayerPVPStat> Stats;
                 int32 PrimaryTalentTree = 0;
                 int8 Sex = 0;
-                int32 Race = 0;
-                int32 Class = 0;
+                int8 Race = 0;
+                int8 Class = 0;
                 int32 CreatureID = 0;
                 int32 HonorLevel = 0;
                 int32 Role = 0;
@@ -205,8 +208,9 @@ namespace WorldPackets
 
             BattlefieldStatusHeader Hdr;
             uint32 ShutdownTimer = 0;
-            uint8 ArenaFaction = 0;
+            int8 ArenaFaction = 0;
             bool LeftEarly = false;
+            bool Brawl = false;
             uint32 StartTimer = 0;
             uint32 Mapid = 0;
         };
@@ -224,7 +228,7 @@ namespace WorldPackets
             bool SuspendedQueue = false;
             bool EligibleForMatchmaking = false;
             uint32 WaitTime = 0;
-            int32 Unused920 = 0;
+            int32 SpecSelected = 0;
         };
 
         class BattlefieldStatusFailed final : public ServerPacket
@@ -323,12 +327,16 @@ namespace WorldPackets
 
             WorldPacket const* Write() override;
 
+            bool RatedBattlegrounds = false;
+            bool PugBattlegrounds = false;
+            bool WargameBattlegrounds = false;
             bool WargameArenas = false;
             bool RatedArenas = false;
-            bool WargameBattlegrounds = false;
             bool ArenaSkirmish = false;
-            bool PugBattlegrounds = false;
-            bool RatedBattlegrounds = false;
+            bool SoloShuffle = false;
+            bool RatedSoloShuffle = false;
+            bool BattlegroundBlitz = false;
+            bool RatedBattlegroundBlitz = false; // solo rbg
         };
 
         class RequestBattlefieldStatus final : public ClientPacket
@@ -437,7 +445,7 @@ namespace WorldPackets
         class RatedPvpInfo final : public ServerPacket
         {
         public:
-            RatedPvpInfo() : ServerPacket(SMSG_RATED_PVP_INFO, 7 * sizeof(BracketInfo)) { }
+            RatedPvpInfo() : ServerPacket(SMSG_RATED_PVP_INFO, 9 * sizeof(BracketInfo)) { }
 
             WorldPacket const* Write() override;
 
@@ -447,8 +455,8 @@ namespace WorldPackets
                 int32 Ranking = 0;
                 int32 SeasonPlayed = 0;
                 int32 SeasonWon = 0;
-                int32 Unused1 = 0;
-                int32 Unused2 = 0;
+                int32 SeasonFactionPlayed = 0;
+                int32 SeasonFactionWon = 0;
                 int32 WeeklyPlayed = 0;
                 int32 WeeklyWon = 0;
                 int32 RoundsSeasonPlayed = 0;
@@ -459,11 +467,11 @@ namespace WorldPackets
                 int32 LastWeeksBestRating = 0;
                 int32 BestSeasonRating = 0;
                 int32 PvpTierID = 0;
-                int32 Unused3 = 0;
-                int32 Unused4 = 0;
-                int32 Rank = 0;
+                int32 SeasonPvpTier = 0;
+                int32 BestWeeklyPvpTier = 0;
+                int32 BestSeasonPvpTierEnum = 0;
                 bool Disqualified = false;
-            } Bracket[7];
+            } Bracket[9];
         };
 
         struct RatedMatchDeserterPenalty

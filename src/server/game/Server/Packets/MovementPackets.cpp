@@ -19,6 +19,7 @@
 #include "MoveSpline.h"
 #include "MoveSplineFlag.h"
 #include "MovementTypedefs.h"
+#include "PacketUtilities.h"
 #include "Unit.h"
 #include "Util.h"
 
@@ -30,6 +31,7 @@ ByteBuffer& operator<<(ByteBuffer& data, MovementInfo const& movementInfo)
     bool hasSpline = false; // todo 6.x send this infos
     bool hasInertia = movementInfo.inertia.has_value();
     bool hasAdvFlying = movementInfo.advFlying.has_value();
+    bool hasDriveStatus = movementInfo.driveStatus.has_value();
     bool hasStandingOnGameObjectGUID = movementInfo.standingOnGameObjectGUID.has_value();
 
     data << movementInfo.guid;
@@ -61,6 +63,7 @@ ByteBuffer& operator<<(ByteBuffer& data, MovementInfo const& movementInfo)
     data.WriteBit(false); // RemoteTimeValid
     data.WriteBit(hasInertia);
     data.WriteBit(hasAdvFlying);
+    data.WriteBit(hasDriveStatus);
 
     data.FlushBits();
 
@@ -96,6 +99,14 @@ ByteBuffer& operator<<(ByteBuffer& data, MovementInfo const& movementInfo)
             data << float(movementInfo.jump.cosAngle);
             data << float(movementInfo.jump.xyspeed);
         }
+    }
+
+    if (hasDriveStatus)
+    {
+        data.WriteBit(movementInfo.driveStatus->accelerating);
+        data.WriteBit(movementInfo.driveStatus->drifting);
+        data << float(movementInfo.driveStatus->speed);
+        data << float(movementInfo.driveStatus->movementAngle);
     }
 
     return data;
@@ -135,6 +146,7 @@ ByteBuffer& operator>>(ByteBuffer& data, MovementInfo& movementInfo)
     data.ReadBit(); // RemoteTimeValid
     bool hasInertia = data.ReadBit();
     bool hasAdvFlying = data.ReadBit();
+    bool hasDriveStatus = data.ReadBit();
 
     if (hasTransport)
         data >> movementInfo.transport;
@@ -173,6 +185,18 @@ ByteBuffer& operator>>(ByteBuffer& data, MovementInfo& movementInfo)
             data >> movementInfo.jump.cosAngle;
             data >> movementInfo.jump.xyspeed;
         }
+    }
+
+    if (hasDriveStatus)
+    {
+        data.ResetBitPos();
+
+        movementInfo.driveStatus.emplace();
+
+        movementInfo.driveStatus->accelerating = data.ReadBit();
+        movementInfo.driveStatus->drifting = data.ReadBit();
+        data >> movementInfo.driveStatus->speed;
+        data >> movementInfo.driveStatus->movementAngle;
     }
 
     return data;
@@ -306,7 +330,7 @@ ByteBuffer& WorldPackets::operator<<(ByteBuffer& data, Movement::MovementSpline 
     data.WriteBits(movementSpline.Face, 2);
     data.WriteBits(movementSpline.Points.size(), 16);
     data.WriteBit(movementSpline.VehicleExitVoluntary);
-    data.WriteBit(movementSpline.Interpolate);
+    data.WriteBit(movementSpline.TaxiSmoothing);
     data.WriteBits(movementSpline.PackedDeltas.size(), 16);
     data.WriteBit(movementSpline.SplineFilter.has_value());
     data.WriteBit(movementSpline.SpellEffectExtraData.has_value());
@@ -356,9 +380,8 @@ ByteBuffer& WorldPackets::operator<<(ByteBuffer& data, Movement::MovementSpline 
 ByteBuffer& WorldPackets::operator<<(ByteBuffer& data, Movement::MovementMonsterSpline const& movementMonsterSpline)
 {
     data << movementMonsterSpline.ID;
-    data << movementMonsterSpline.Destination;
     data.WriteBit(movementMonsterSpline.CrzTeleport);
-    data.WriteBits(movementMonsterSpline.StopDistanceTolerance, 3);
+    data.WriteBits(movementMonsterSpline.StopSplineStyle, 3);
 
     data << movementMonsterSpline.Move;
 
@@ -373,7 +396,13 @@ void WorldPackets::Movement::CommonMovement::WriteCreateObjectSplineDataBlock(::
     if (!moveSpline.isCyclic())                                                 // Destination
         dest = moveSpline.FinalDestination();
     else
-        dest = G3D::Vector3::zero();
+    {
+        ::Movement::MoveSpline::MySpline const& spline = moveSpline._Spline();
+        if (spline.getPointCount() <= 1)
+            dest = G3D::Vector3::zero();
+        else
+            dest = spline.getPoint(spline.last() - 1);
+    }
 
     data << dest.x << dest.y << dest.z;
 
@@ -382,17 +411,17 @@ void WorldPackets::Movement::CommonMovement::WriteCreateObjectSplineDataBlock(::
 
     if (hasSplineMove)                                                          // MovementSplineMove
     {
-        data << uint32(moveSpline.splineflags.raw());                           // SplineFlags
+        data << uint32(moveSpline.splineflags.Raw.AsUnderlyingType());          // SplineFlags
         data << int32(moveSpline.timePassed());                                 // Elapsed
         data << uint32(moveSpline.Duration());                                  // Duration
         data << float(1.0f);                                                    // DurationModifier
         data << float(1.0f);                                                    // NextDurationModifier
         data.WriteBits(moveSpline.facing.type, 2);                              // Face
-        bool hasFadeObjectTime = data.WriteBit(moveSpline.splineflags.fadeObject && moveSpline.effect_start_time < moveSpline.Duration());
+        bool hasFadeObjectTime = data.WriteBit(moveSpline.splineflags.FadeObject && moveSpline.effect_start_time < moveSpline.Duration());
         data.WriteBits(moveSpline.getPath().size(), 16);
         data.WriteBit(false);                                                   // HasSplineFilter
         data.WriteBit(moveSpline.spell_effect_extra.has_value());               // HasSpellEffectExtraData
-        bool hasJumpExtraData = data.WriteBit(moveSpline.splineflags.parabolic && (!moveSpline.spell_effect_extra || moveSpline.effect_start_time));
+        bool hasJumpExtraData = data.WriteBit(moveSpline.splineflags.Parabolic && (!moveSpline.spell_effect_extra || moveSpline.effect_start_time));
         data.WriteBit(moveSpline.anim_tier.has_value());                        // HasAnimTierTransition
         data.WriteBit(false);                                                   // HasUnknown901
         data.FlushBits();
@@ -512,7 +541,10 @@ void WorldPackets::Movement::CommonMovement::WriteMovementForceWithDirection(Mov
 
     data << uint32(movementForce.TransportID);
     data << float(movementForce.Magnitude);
-    data << int32(movementForce.Unused910);
+    data << int32(movementForce.MovementForceID);
+    data << int32(movementForce.Unknown1110_1);
+    data << int32(movementForce.Unused1110);
+    data << uint32(movementForce.Flags);
     data.WriteBits(AsUnderlyingType(movementForce.Type), 2);
     data.FlushBits();
 }
@@ -523,14 +555,13 @@ void WorldPackets::Movement::MonsterMove::InitializeSplineData(::Movement::MoveS
     WorldPackets::Movement::MovementSpline& movementSpline = SplineData.Move;
 
     ::Movement::MoveSplineFlag splineFlags = moveSpline.splineflags;
-    splineFlags.enter_cycle = moveSpline.isCyclic();
-    movementSpline.Flags = uint32(splineFlags & uint32(~::Movement::MoveSplineFlag::Mask_No_Monster_Move));
+    movementSpline.Flags = uint32(splineFlags & ~::Movement::MoveSplineFlagEnum::Mask_No_Monster_Move);
     movementSpline.Face = moveSpline.facing.type;
     movementSpline.FaceDirection = moveSpline.facing.angle;
     movementSpline.FaceGUID = moveSpline.facing.target;
     movementSpline.FaceSpot = Position(moveSpline.facing.f.x, moveSpline.facing.f.y, moveSpline.facing.f.z);
 
-    if (splineFlags.animation)
+    if (moveSpline.anim_tier)
     {
         movementSpline.AnimTierTransition.emplace();
         movementSpline.AnimTierTransition->TierTransitionID = moveSpline.anim_tier->TierTransitionId;
@@ -540,14 +571,14 @@ void WorldPackets::Movement::MonsterMove::InitializeSplineData(::Movement::MoveS
 
     movementSpline.MoveTime = moveSpline.Duration();
 
-    if (splineFlags.parabolic && (!moveSpline.spell_effect_extra || moveSpline.effect_start_time))
+    if (splineFlags.Parabolic && (!moveSpline.spell_effect_extra || moveSpline.effect_start_time))
     {
         movementSpline.JumpExtraData.emplace();
         movementSpline.JumpExtraData->JumpGravity = moveSpline.vertical_acceleration;
         movementSpline.JumpExtraData->StartTime = moveSpline.effect_start_time;
     }
 
-    if (splineFlags.fadeObject)
+    if (splineFlags.FadeObject)
         movementSpline.FadeObjectTime = moveSpline.effect_start_time;
 
     if (moveSpline.spell_effect_extra)
@@ -563,26 +594,16 @@ void WorldPackets::Movement::MonsterMove::InitializeSplineData(::Movement::MoveS
     ::Movement::Spline<int32> const& spline = moveSpline.spline;
     std::vector<G3D::Vector3> const& array = spline.getPoints();
 
-    if (splineFlags & ::Movement::MoveSplineFlag::UncompressedPath)
+    if (splineFlags.UncompressedPath)
     {
-        if (!splineFlags.cyclic)
-        {
-            uint32 count = spline.getPointCount() - 3;
-            for (uint32 i = 0; i < count; ++i)
-                movementSpline.Points.emplace_back(array[i + 2].x, array[i + 2].y, array[i + 2].z);
-        }
-        else
-        {
-            uint32 count = spline.getPointCount() - 3;
-            movementSpline.Points.emplace_back(array[1].x, array[1].y, array[1].z);
-            for (uint32 i = 0; i < count; ++i)
-                movementSpline.Points.emplace_back(array[i + 1].x, array[i + 1].y, array[i + 1].z);
-        }
+        uint32 count = spline.getPointCount() - (splineFlags.Cyclic ? 4 : 3);
+        for (uint32 i = 0; i < count; ++i)
+            movementSpline.Points.emplace_back(array[i + 2].x, array[i + 2].y, array[i + 2].z);
     }
     else
     {
-        uint32 lastIdx = spline.getPointCount() - 3;
-        G3D::Vector3 const* realPath = &spline.getPoint(1);
+        uint32 lastIdx = spline.getPointCount() - (splineFlags.Cyclic ? 4 : 3);
+        G3D::Vector3 const* realPath = &array[1];
 
         movementSpline.Points.emplace_back(realPath[lastIdx].x, realPath[lastIdx].y, realPath[lastIdx].z);
 
@@ -638,6 +659,23 @@ WorldPacket const* WorldPackets::Movement::MoveUpdateSpeed::Write()
     return &_worldPacket;
 }
 
+WorldPacket const* WorldPackets::Movement::SetAdvFlyingSpeed::Write()
+{
+    _worldPacket << MoverGUID;
+    _worldPacket << uint32(SequenceIndex);
+    _worldPacket << float(Speed);
+    return &_worldPacket;
+}
+
+WorldPacket const* WorldPackets::Movement::SetAdvFlyingSpeedRange::Write()
+{
+    _worldPacket << MoverGUID;
+    _worldPacket << uint32(SequenceIndex);
+    _worldPacket << float(SpeedMin);
+    _worldPacket << float(SpeedMax);
+    return &_worldPacket;
+}
+
 WorldPacket const* WorldPackets::Movement::MoveSplineSetFlag::Write()
 {
     _worldPacket << MoverGUID;
@@ -662,8 +700,11 @@ WorldPacket const* WorldPackets::Movement::TransferPending::Write()
 {
     _worldPacket << int32(MapID);
     _worldPacket << OldMapPosition;
-    _worldPacket.WriteBit(Ship.has_value());
-    _worldPacket.WriteBit(TransferSpellID.has_value());
+    _worldPacket << OptionalInit(Ship);
+    _worldPacket << OptionalInit(TransferSpellID);
+    _worldPacket << OptionalInit(TaxiPathID);
+    _worldPacket.FlushBits();
+
     if (Ship)
     {
         _worldPacket << uint32(Ship->ID);
@@ -673,7 +714,8 @@ WorldPacket const* WorldPackets::Movement::TransferPending::Write()
     if (TransferSpellID)
         _worldPacket << int32(*TransferSpellID);
 
-    _worldPacket.FlushBits();
+    if (TaxiPathID)
+        _worldPacket << int32(*TaxiPathID);
 
     return &_worldPacket;
 }
@@ -703,6 +745,7 @@ WorldPacket const* WorldPackets::Movement::NewWorld::Write()
     _worldPacket << Loc;
     _worldPacket << uint32(Reason);
     _worldPacket << MovementOffset;
+    _worldPacket << int32(Counter);
     return &_worldPacket;
 }
 
@@ -745,7 +788,10 @@ ByteBuffer& operator>>(ByteBuffer& data, MovementForce& movementForce)
     data >> movementForce.Direction;
     data >> movementForce.TransportID;
     data >> movementForce.Magnitude;
-    data >> movementForce.Unused910;
+    data >> movementForce.MovementForceID;
+    data >> movementForce.Unknown1110_1;
+    data >> movementForce.Unused1110;
+    data >> movementForce.Flags;
     movementForce.Type = MovementForceType(data.ReadBits(2));
 
     return data;
@@ -824,6 +870,13 @@ void WorldPackets::Movement::MovementSpeedAck::Read()
 {
     _worldPacket >> Ack;
     _worldPacket >> Speed;
+}
+
+void WorldPackets::Movement::MovementSpeedRangeAck::Read()
+{
+    _worldPacket >> Ack;
+    _worldPacket >> SpeedMin;
+    _worldPacket >> SpeedMax;
 }
 
 void WorldPackets::Movement::SetActiveMover::Read()
@@ -956,7 +1009,7 @@ void WorldPackets::Movement::MoveSetCollisionHeightAck::Read()
     _worldPacket >> Data;
     _worldPacket >> Height;
     _worldPacket >> MountDisplayID;
-    Reason = _worldPacket.read<UpdateCollisionHeightReason, uint8>();
+    _worldPacket >> As<uint8>(Reason);
 }
 
 void WorldPackets::Movement::MoveTimeSkipped::Read()
@@ -1031,10 +1084,10 @@ WorldPacket const* WorldPackets::Movement::ResumeToken::Write()
 
 ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Movement::MoveSetCompoundState::MoveStateChange const& stateChange)
 {
-    data << uint16(stateChange.MessageID);
+    data << uint32(stateChange.MessageID);
     data << uint32(stateChange.SequenceIndex);
     data.WriteBit(stateChange.Speed.has_value());
-    data.WriteBit(stateChange.SpeedRange.has_value());
+    data.WriteBit(stateChange.Range.has_value());
     data.WriteBit(stateChange.KnockBack.has_value());
     data.WriteBit(stateChange.VehicleRecID.has_value());
     data.WriteBit(stateChange.CollisionHeight.has_value());
@@ -1042,6 +1095,7 @@ ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Movement::MoveSetCompound
     data.WriteBit(stateChange.MovementForceGUID.has_value());
     data.WriteBit(stateChange.MovementInertiaID.has_value());
     data.WriteBit(stateChange.MovementInertiaLifetimeMs.has_value());
+    data.WriteBit(stateChange.DriveCapabilityRecID.has_value());
     data.FlushBits();
 
     if (stateChange.MovementForce_)
@@ -1050,10 +1104,10 @@ ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Movement::MoveSetCompound
     if (stateChange.Speed)
         data << float(*stateChange.Speed);
 
-    if (stateChange.SpeedRange)
+    if (stateChange.Range)
     {
-        data << float(stateChange.SpeedRange->Min);
-        data << float(stateChange.SpeedRange->Max);
+        data << float(stateChange.Range->Min);
+        data << float(stateChange.Range->Max);
     }
 
     if (stateChange.KnockBack)
@@ -1081,6 +1135,9 @@ ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Movement::MoveSetCompound
 
     if (stateChange.MovementInertiaLifetimeMs)
         data << uint32(*stateChange.MovementInertiaLifetimeMs);
+
+    if (stateChange.DriveCapabilityRecID)
+        data << int32(*stateChange.DriveCapabilityRecID);
 
     return data;
 }

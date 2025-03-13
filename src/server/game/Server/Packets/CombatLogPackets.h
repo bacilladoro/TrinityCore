@@ -187,7 +187,7 @@ namespace WorldPackets
             ObjectGuid CasterGUID;
             ObjectGuid TargetGUID;
             int32 SpellID = 0;
-            int32 Type = 0;
+            int8 Type = 0;
             int32 Amount = 0;
             int32 OverEnergize = 0;
         };
@@ -338,7 +338,7 @@ namespace WorldPackets
             int32 AbsorbSpellID = 0;
             int32 Absorbed = 0;
             int32 OriginalDamage = 0;
-            bool Unk = false;
+            bool Crit = false;
             std::vector<Spells::SpellSupportInfo> Supporters;
         };
 

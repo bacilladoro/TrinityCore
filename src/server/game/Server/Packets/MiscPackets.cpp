@@ -36,8 +36,8 @@ WorldPacket const* WorldPackets::Misc::InvalidatePlayer::Write()
 
 WorldPacket const* WorldPackets::Misc::LoginSetTimeSpeed::Write()
 {
-    _worldPacket.AppendPackedTime(ServerTime);
-    _worldPacket.AppendPackedTime(GameTime);
+    _worldPacket << ServerTime;
+    _worldPacket << GameTime;
     _worldPacket << float(NewSpeed);
     _worldPacket << uint32(ServerTimeHolidayOffset);
     _worldPacket << uint32(GameTimeHolidayOffset);
@@ -66,6 +66,7 @@ WorldPacket const* WorldPackets::Misc::SetCurrency::Write()
     _worldPacket.WriteBit(FirstCraftOperationID.has_value());
     _worldPacket.WriteBit(NextRechargeTime.has_value());
     _worldPacket.WriteBit(RechargeCycleStartTime.has_value());
+    _worldPacket.WriteBit(OverflownCurrencyID.has_value());
     _worldPacket.FlushBits();
 
     if (WeeklyQuantity)
@@ -97,6 +98,9 @@ WorldPacket const* WorldPackets::Misc::SetCurrency::Write()
 
     if (RechargeCycleStartTime)
         _worldPacket << *RechargeCycleStartTime;
+
+    if (OverflownCurrencyID)
+        _worldPacket << int32(*OverflownCurrencyID);
 
     return &_worldPacket;
 }
@@ -313,16 +317,13 @@ WorldPacket const* WorldPackets::Misc::Weather::Write()
 
 void WorldPackets::Misc::StandStateChange::Read()
 {
-    uint32 state;
-    _worldPacket >> state;
-
-    StandState = UnitStandStateType(state);
+    _worldPacket >> As<uint8>(StandState);
 }
 
 WorldPacket const* WorldPackets::Misc::StandStateUpdate::Write()
 {
-    _worldPacket << uint32(AnimKitID);
     _worldPacket << uint8(State);
+    _worldPacket << uint32(AnimKitID);
 
     return &_worldPacket;
 }
@@ -346,7 +347,7 @@ WorldPacket const* WorldPackets::Misc::PlayerBound::Write()
 
 WorldPacket const* WorldPackets::Misc::StartMirrorTimer::Write()
 {
-    _worldPacket << int32(Timer);
+    _worldPacket << uint8(Timer);
     _worldPacket << int32(Value);
     _worldPacket << int32(MaxValue);
     _worldPacket << int32(Scale);
@@ -359,7 +360,7 @@ WorldPacket const* WorldPackets::Misc::StartMirrorTimer::Write()
 
 WorldPacket const* WorldPackets::Misc::PauseMirrorTimer::Write()
 {
-    _worldPacket << int32(Timer);
+    _worldPacket << uint8(Timer);
     _worldPacket.WriteBit(Paused);
     _worldPacket.FlushBits();
 
@@ -368,7 +369,7 @@ WorldPacket const* WorldPackets::Misc::PauseMirrorTimer::Write()
 
 WorldPacket const* WorldPackets::Misc::StopMirrorTimer::Write()
 {
-    _worldPacket << int32(Timer);
+    _worldPacket << uint8(Timer);
 
     return &_worldPacket;
 }
@@ -427,14 +428,14 @@ WorldPacket const* WorldPackets::Misc::RandomRoll::Write()
 
 WorldPacket const* WorldPackets::Misc::EnableBarberShop::Write()
 {
-    _worldPacket << uint8(CustomizationScope);
+    _worldPacket << uint32(CustomizationFeatureMask);
 
     return &_worldPacket;
 }
 
 ByteBuffer& operator<<(ByteBuffer& data, WorldPackets::Misc::PhaseShiftDataPhase const& phaseShiftDataPhase)
 {
-    data << uint16(phaseShiftDataPhase.PhaseFlags);
+    data << uint32(phaseShiftDataPhase.PhaseFlags);
     data << uint16(phaseShiftDataPhase.Id);
     return data;
 }
@@ -517,6 +518,13 @@ WorldPacket const* WorldPackets::Misc::PlaySpeakerbotSound::Write()
 {
     _worldPacket << SourceObjectGUID;
     _worldPacket << int32(SoundKitID);
+
+    return &_worldPacket;
+}
+
+WorldPacket const* WorldPackets::Misc::StopSpeakerbotSound::Write()
+{
+    _worldPacket << SourceObjectGUID;
 
     return &_worldPacket;
 }
@@ -647,7 +655,7 @@ WorldPacket const* WorldPackets::Misc::AccountHeirloomUpdate::Write()
     _worldPacket.WriteBit(IsFullUpdate);
     _worldPacket.FlushBits();
 
-    _worldPacket << int32(Unk);
+    _worldPacket << int32(ItemCollectionType);
 
     // both lists have to have the same size
     _worldPacket << uint32(Heirlooms->size());
@@ -750,10 +758,20 @@ void WorldPackets::Misc::CloseInteraction::Read()
 WorldPacket const* WorldPackets::Misc::StartTimer::Write()
 {
     _worldPacket << TotalTime;
-    _worldPacket << TimeLeft;
     _worldPacket << int32(Type);
+    _worldPacket << TimeLeft;
+    _worldPacket.WriteBit(PlayerGuid.has_value());
+    _worldPacket.FlushBits();
+
+    if (PlayerGuid)
+        _worldPacket << *PlayerGuid;
 
     return &_worldPacket;
+}
+
+void WorldPackets::Misc::QueryCountdownTimer::Read()
+{
+    _worldPacket >> As<int32>(TimerType);
 }
 
 void WorldPackets::Misc::ConversationLineStarted::Read()
@@ -793,6 +811,27 @@ WorldPacket const* WorldPackets::Misc::DisplayToast::Write()
         default:
             break;
     }
+
+    _worldPacket.FlushBits();
+
+    return &_worldPacket;
+}
+
+WorldPacket const* WorldPackets::Misc::AccountWarbandSceneUpdate::Write()
+{
+    _worldPacket << Bits<1>(IsFullUpdate);
+    _worldPacket << uint32(WarbandScenes->size());
+    _worldPacket << uint32(WarbandScenes->size());
+    _worldPacket << uint32(WarbandScenes->size());
+
+    for (auto [warbandSceneId, _] : *WarbandScenes)
+        _worldPacket << uint32(warbandSceneId);
+
+    for (auto [_, data] : *WarbandScenes)
+        _worldPacket << Bits<1>(data.Flags.HasFlag(WarbandSceneCollectionFlags::Favorite));
+
+    for (auto [_, data] : *WarbandScenes)
+        _worldPacket << Bits<1>(data.Flags.HasFlag(WarbandSceneCollectionFlags::HasFanfare));
 
     _worldPacket.FlushBits();
 

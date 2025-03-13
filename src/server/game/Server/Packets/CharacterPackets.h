@@ -60,10 +60,12 @@ namespace WorldPackets
             uint8 Race            = RACE_NONE;
             uint8 Class           = CLASS_NONE;
             uint8 Sex             = GENDER_NONE;
-            Array<ChrCustomizationChoice, 125> Customizations;
+            Array<ChrCustomizationChoice, 250> Customizations;
             Optional<int32> TemplateSet;
+            int32 TimerunningSeasonID = 0;
             bool IsTrialBoost     = false;
             bool UseNPE           = false;
+            bool HardcoreSelfFound = false;
             std::string Name;
 
             /// Server side data
@@ -81,7 +83,7 @@ namespace WorldPackets
             ObjectGuid CharGUID;
             uint8 SexID             = GENDER_NONE;
             std::string CharName;
-            Array<ChrCustomizationChoice, 125> Customizations;
+            Array<ChrCustomizationChoice, 250> Customizations;
         };
 
         struct CharRaceOrFactionChangeInfo
@@ -92,7 +94,7 @@ namespace WorldPackets
             ObjectGuid Guid;
             bool FactionChange      = false;
             std::string Name;
-            Array<ChrCustomizationChoice, 125> Customizations;
+            Array<ChrCustomizationChoice, 250> Customizations;
         };
 
         struct CharacterUndeleteInfo
@@ -105,10 +107,36 @@ namespace WorldPackets
             std::string Name;
         };
 
+        struct CustomTabardInfo
+        {
+            int32 EmblemStyle = -1;
+            int32 EmblemColor = -1;
+            int32 BorderStyle = -1;
+            int32 BorderColor = -1;
+            int32 BackgroundColor = -1;
+        };
+
+        struct WarbandGroupMember
+        {
+            uint32 WarbandScenePlacementID = 0;
+            int32 Type = 0;
+            ObjectGuid Guid;
+        };
+
+        struct WarbandGroup
+        {
+            uint64 GroupID = 0;
+            uint8 OrderIndex = 0;
+            uint32 WarbandSceneID = 0;
+            uint32 Flags = 0;    ///< enum WarbandGroupFlags { Collapsed = 1 }
+            std::vector<WarbandGroupMember> Members;
+            std::string_view Name;
+        };
+
         class EnumCharactersResult final : public ServerPacket
         {
         public:
-            struct CharacterInfo
+            struct CharacterInfoBasic
             {
                 /**
                  * @fn  void WorldPackets::Character::EnumCharactersResult::CharacterInfo::CharacterInfo(Field* fields);
@@ -117,9 +145,10 @@ namespace WorldPackets
                  *
                  * @param   fields         Field set of CharacterDatabaseStatements::CHAR_SEL_ENUM
                  */
-                CharacterInfo(Field* fields);
+                CharacterInfoBasic(Field const* fields);
 
                 ObjectGuid Guid;
+                uint32 VirtualRealmAddress = 0;
                 uint64 GuildClubMemberID = 0; ///< same as bgs.protocol.club.v1.MemberId.unique_id, guessed basing on SMSG_QUERY_PLAYER_NAME_RESPONSE (that one is known)
                 std::string Name;
                 uint8 ListPosition       = 0; ///< Order of the characters in list
@@ -135,20 +164,20 @@ namespace WorldPackets
                 uint32 Flags             = 0; ///< Character flag @see enum CharacterFlags
                 uint32 Flags2            = 0; ///< Character customization flags @see enum CharacterCustomizeFlags
                 uint32 Flags3            = 0; ///< Character flags 3 @todo research
-                uint32 Flags4            = 0;
+                uint32 Flags4            = 0; ///< Character flags 4 @todo research
                 bool FirstLogin      = false;
-                uint8 unkWod61x          = 0;
-                Timestamp<> LastPlayedTime;
+                uint8 CantLoginReason    = 0;
+                Timestamp<> LastActiveTime;
                 uint16 SpecID            = 0;
-                uint32 Unknown703        = 0;
+                uint32 SaveVersion       = 0;
                 uint32 LastLoginVersion  = 0;
                 uint32 OverrideSelectScreenFileDataID = 0;
+                int32 TimerunningSeasonID = 0;
 
                 uint32 PetCreatureDisplayID = 0;
                 uint32 PetExperienceLevel   = 0;
                 uint32 PetCreatureFamilyID  = 0;
 
-                bool BoostInProgress = false; ///< @todo
                 int32 ProfessionIds[2] = { }; ///< @todo
 
                 struct VisualItemInfo
@@ -158,25 +187,62 @@ namespace WorldPackets
                     int32 SecondaryItemModifiedAppearanceID = 0; // also -1 is some special value
                     uint8 InvType           = 0;
                     uint8 Subclass          = 0;
+                    uint32 ItemID           = 0;
+                    uint32 TransmogrifiedItemID = 0;
                 };
 
-                std::array<VisualItemInfo, 35> VisualItems = { };
+                std::array<VisualItemInfo, 19> VisualItems = { };
+                CustomTabardInfo PersonalTabard;
+                uint32 Unused1110_1 = 0;
+                bool Unused1110_2 = false;
+                bool Unused1110_3 = false;
+            };
+
+            struct CharacterRestrictionAndMailData
+            {
+                bool BoostInProgress = false; ///< @todo
+                uint32 RestrictionFlags  = 0;
                 std::vector<std::string> MailSenders;
                 std::vector<uint32> MailSenderTypes;
+                bool RpeResetAvailable = false;
+                bool RpeResetQuestClearAvailable = false;
+            };
+
+            struct CharacterInfo
+            {
+                CharacterInfo(Field const* fields);
+
+                CharacterInfoBasic Basic;
+                CharacterRestrictionAndMailData RestrictionsAndMails;
+            };
+
+            struct RegionwideCharacterListEntry
+            {
+                RegionwideCharacterListEntry(Field const* fields);
+
+                CharacterInfoBasic Basic;
+                uint64 Money = 0;
+                float AvgEquippedItemLevel = 0.0f;
+                float CurrentSeasonMythicPlusOverallScore = 0.0f;
+                uint32 CurrentSeasonBestPvpRating = 0;
+                int8 PvpRatingBracket = 0;
+                int16 PvpRatingAssociatedSpecID = 0;
             };
 
             struct RaceUnlock
             {
-                int32 RaceID          = 0;
-                bool HasExpansion     = false;
-                bool HasAchievement   = false;
-                bool HasHeritageArmor = false;
+                int8 RaceID = 0;
+                bool HasUnlockedLicense = false;
+                bool HasUnlockedAchievement = false;
+                bool HasHeritageArmorUnlockAchievement = false;
+                bool HideRaceOnClient = false;
+                bool Unused1027 = false;
             };
 
             struct UnlockedConditionalAppearance
             {
                 int32 AchievementID = 0;
-                int32 Unused = 0;
+                int32 ConditionalType = 0;
             };
 
             struct RaceLimitDisableInfo
@@ -187,29 +253,32 @@ namespace WorldPackets
                     Level
                 };
 
-                int32 RaceID = 0;
-                int32 BlockReason = 0;
+                int8 RaceID = 0;
+                int32 Reason = 0;
             };
 
             EnumCharactersResult() : ServerPacket(SMSG_ENUM_CHARACTERS_RESULT) { }
 
             WorldPacket const* Write() override;
 
-            bool Success                          = false; ///<
+            bool Success                          = false;
+            bool Realmless                        = false;
             bool IsDeletedCharacters              = false; ///< used for character undelete list
-            bool IsNewPlayerRestrictionSkipped    = false; ///< allows client to skip new player restrictions
-            bool IsNewPlayerRestricted            = false; ///< forbids using level boost and class trials
-            bool IsNewPlayer                      = false; ///< forbids hero classes and allied races
-            bool IsTrialAccountRestricted         = false;
-            bool IsAlliedRacesCreationAllowed     = false;
+            bool IgnoreNewPlayerRestrictions      = false; ///< allows client to skip new player restrictions
+            bool IsRestrictedNewPlayer            = false; ///< forbids using level boost and class trials
+            bool IsNewcomerChatCompleted          = false; ///< forbids hero classes and allied races
+            bool IsRestrictedTrial                = false;
+            bool DontCreateCharacterDisplays      = false;
 
             int32 MaxCharacterLevel     = 1;
-            Optional<uint32> DisabledClassesMask;
+            Optional<uint32> ClassDisableMask;
 
             std::vector<CharacterInfo> Characters; ///< all characters on the list
-            std::vector<RaceUnlock> RaceUnlockData; ///<
+            std::vector<RegionwideCharacterListEntry> RegionwideCharacters;
+            std::vector<RaceUnlock> RaceUnlockData;
             std::vector<UnlockedConditionalAppearance> UnlockedConditionalAppearances;
             std::vector<RaceLimitDisableInfo> RaceLimitDisables;
+            std::vector<WarbandGroup> WarbandGroups;
         };
 
         class CheckCharacterNameAvailability final : public ClientPacket
@@ -366,7 +435,7 @@ namespace WorldPackets
             std::string Name;
             uint8 SexID             = 0;
             uint8 RaceID            = RACE_NONE;
-            Array<ChrCustomizationChoice, 125> const* Customizations = nullptr;
+            Array<ChrCustomizationChoice, 250> const* Customizations = nullptr;
         };
 
         class CharFactionChangeResult final : public ServerPacket
@@ -541,12 +610,34 @@ namespace WorldPackets
             bool Instant = false;
         };
 
+        struct GameModeData
+        {
+            int32 Unknown_1107_0 = 0;
+            ObjectGuid Guid;
+            uint8 GameMode = 0;
+            int32 MapID = 0;
+            uint8 Unknown_1107_1 = 0;
+            uint8 Unknown_1107_2 = 0;
+            uint8 Unknown_1107_3 = 0;
+            Array<ChrCustomizationChoice, 250> Customizations;
+            Array<ChrCustomizationChoice, 250> Unknown_1107_4;
+        };
+
+        struct SwitchGameModeData
+        {
+            bool IsFastLogin = false;
+            GameModeData Current;
+            GameModeData New;
+        };
+
         class LogoutComplete final : public ServerPacket
         {
         public:
-            LogoutComplete() : ServerPacket(SMSG_LOGOUT_COMPLETE, 0) { }
+            LogoutComplete() : ServerPacket(SMSG_LOGOUT_COMPLETE, 1) { }
 
-            WorldPacket const* Write() override { return &_worldPacket; }
+            WorldPacket const* Write() override;
+
+            std::unique_ptr<SwitchGameModeData> SwitchGameMode;
         };
 
         class LogoutCancel final : public ClientPacket
@@ -637,9 +728,10 @@ namespace WorldPackets
             void Read() override;
 
             uint8 NewSex = 0;
-            Array<ChrCustomizationChoice, 125> Customizations;
-            int32 CustomizedRace = 0;
+            Array<ChrCustomizationChoice, 250> Customizations;
+            int8 CustomizedRace = 0;
             int32 CustomizedChrModelID = 0;
+            int8 UnalteredVisualRaceID = 0;
         };
 
         class BarberShopResult final : public ServerPacket
@@ -691,7 +783,7 @@ namespace WorldPackets
 
             void Read() override;
 
-            uint8 FactionIndex = 0;
+            uint16 FactionIndex = 0;
         };
 
         class SetFactionNotAtWar final : public ClientPacket
@@ -701,7 +793,7 @@ namespace WorldPackets
 
             void Read() override;
 
-            uint8 FactionIndex = 0;
+            uint16 FactionIndex = 0;
         };
 
         class SetFactionInactive final : public ClientPacket
@@ -745,7 +837,7 @@ namespace WorldPackets
             ObjectGuid CharGUID;
             std::string CharName;
             uint8 SexID = 0;
-            Array<ChrCustomizationChoice, 125> const& Customizations;
+            Array<ChrCustomizationChoice, 250> const& Customizations;
         };
 
         class CharCustomizeFailure final : public ServerPacket
@@ -779,6 +871,27 @@ namespace WorldPackets
 
             ObjectGuid Player;
             int32 ResultCode = 0;
+        };
+
+        class SavePersonalEmblem final : public ClientPacket
+        {
+        public:
+            SavePersonalEmblem(WorldPacket&& packet) : ClientPacket(CMSG_SAVE_PERSONAL_EMBLEM, std::move(packet)) { }
+
+            void Read() override;
+
+            ObjectGuid Vendor;
+            CustomTabardInfo PersonalTabard;
+        };
+
+        class PlayerSavePersonalEmblem final : public ServerPacket
+        {
+        public:
+            explicit PlayerSavePersonalEmblem(int32 error) : ServerPacket(SMSG_PLAYER_SAVE_PERSONAL_EMBLEM, 4), Error(error) { }
+
+            WorldPacket const* Write() override;
+
+            int32 Error;
         };
     }
 }

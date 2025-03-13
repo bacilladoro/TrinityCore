@@ -58,6 +58,16 @@ namespace WorldPackets
             ObjectGuid Pet;
         };
 
+        class PetAbandonByNumber final : public ClientPacket
+        {
+        public:
+            PetAbandonByNumber(WorldPacket&& packet) : ClientPacket(CMSG_PET_ABANDON_BY_NUMBER, std::move(packet)) { }
+
+            void Read() override;
+
+            uint32 PetNumber = 0;
+        };
+
         class PetStopAttack final : public ClientPacket
         {
         public:
@@ -126,7 +136,7 @@ namespace WorldPackets
 
             WorldPacket const* Write() override;
 
-            uint8 Result = 0;
+            int32 Result = 0;
         };
 
         class PetLearnedSpells final : public ServerPacket
