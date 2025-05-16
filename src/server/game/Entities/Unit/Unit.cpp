@@ -1713,15 +1713,29 @@ void Unit::HandleEmoteCommand(Emote emoteId, Player* target /*=nullptr*/, Trinit
     if (G3D::fuzzyLe(armor, 0.0f))
         return damage;
 
-    Classes attackerClass = CLASS_WARRIOR;
+    Classes attackerClass = CLASS_NONE;
+    Optional<float> attackerItemLevel;
     if (attacker)
     {
         attackerLevel = attacker->GetLevelForTarget(victim);
-        attackerClass = Classes(attacker->GetClass());
+        if (Player const* ownerPlayer = attacker->GetCharmerOrOwnerPlayerOrPlayerItself())
+            attackerItemLevel = ownerPlayer->m_playerData->AvgItemLevel[AsUnderlyingType(AvgItemLevelCategory::EquippedBase)];
+        else
+            attackerClass = Classes(attacker->GetClass());
     }
 
     // Expansion and ContentTuningID necessary? Does Player get a ContentTuningID too ?
     float armorConstant = sDB2Manager.EvaluateExpectedStat(ExpectedStatType::ArmorConstant, attackerLevel, -2, 0, attackerClass, 0);
+    if (attackerItemLevel)
+    {
+        uint32 maxLevelForExpansion = GetMaxLevelForExpansion(sWorld->getIntConfig(CONFIG_EXPANSION));
+        if (attackerLevel == maxLevelForExpansion)
+        {
+            float itemLevelDelta = *attackerItemLevel - ASSERT_NOTNULL(sItemLevelByLevelTable.GetRow(maxLevelForExpansion))->ItemLevel;
+            if (uint32 curveId = sDB2Manager.GetGlobalCurveId(GlobalCurve::ArmorItemLevelDiminishing))
+                armorConstant *= sDB2Manager.GetCurveValueAt(curveId, itemLevelDelta);
+        }
+    }
 
     if (!(armor + armorConstant))
         return damage;
@@ -5439,10 +5453,15 @@ void Unit::RemoveAreaTrigger(AuraEffect const* aurEff)
     }
 }
 
-void Unit::RemoveAllAreaTriggers()
+void Unit::RemoveAllAreaTriggers(AreaTriggerRemoveReason reason /*= AreaTriggerRemoveReason::Default*/)
 {
-    while (!m_areaTrigger.empty())
-        m_areaTrigger.back()->Remove();
+    for (AreaTrigger* at : AreaTriggerList(std::move(m_areaTrigger)))
+    {
+        if (reason == AreaTriggerRemoveReason::UnitDespawn && at->GetTemplate()->ActionSetFlags.HasFlag(AreaTriggerActionSetFlag::DontDespawnWithCreator))
+            continue;
+
+        at->Remove();
+    }
 }
 
 void Unit::SendSpellNonMeleeDamageLog(SpellNonMeleeDamage const* log)
@@ -10020,7 +10039,7 @@ void Unit::RemoveFromWorld()
 
         RemoveAllGameObjects();
         RemoveAllDynObjects();
-        RemoveAllAreaTriggers();
+        RemoveAllAreaTriggers(AreaTriggerRemoveReason::UnitDespawn);
 
         ExitVehicle();  // Remove applied auras with SPELL_AURA_CONTROL_VEHICLE
         UnsummonAllTotems();
